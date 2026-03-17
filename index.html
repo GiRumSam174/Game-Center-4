@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Game Center 4</title>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --text-color: white;
+            --accent: #f1c40f;
+            
+            /* Wordle Colors */
+            --w-correct: #538d4e;
+            --w-present: #b59f3b;
+            --w-absent: #3a3a3c;
+
+            /* 2048 Colors */
+            --g-bg: #bbada0;
+            --cell-bg: #cdc1b4;
+        }
+
+        * { box-sizing: border-box; touch-action: manipulation; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+            overscroll-behavior: none;
+        }
+
+        /* --- VIEWS & LAYOUT --- */
+        .view {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
+        .view.active { display: flex; }
+
+        header {
+            flex: 0 0 50px;
+            display: grid; 
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            padding: 0 15px;
+            background: rgba(0,0,0,0.3);
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .header-btn {
+            background: var(--accent); color: #2c3e50;
+            border: none; border-radius: 5px;
+            padding: 5px 15px;
+            font-size: 14px; font-weight: bold; cursor: pointer;
+            justify-self: end;
+        }
+
+        /* --- MAIN MENU --- */
+        #menu-view {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
+        }
+        h1 { font-size: 3rem; margin-bottom: 30px; color: var(--accent); text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .menu-btn {
+            background: white; color: #2c3e50;
+            border: none; padding: 15px 30px; margin: 10px;
+            font-size: 1.2rem; font-weight: bold; border-radius: 50px;
+            width: 80%; max-width: 300px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            cursor: pointer; transition: transform 0.1s;
+        }
+        .menu-btn:active { transform: scale(0.95); }
+
+        /* --- MODAL SYSTEM --- */
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none; justify-content: center; align-items: center;
+            z-index: 1000; backdrop-filter: blur(2px);
+        }
+        #modal-box {
+            background: white; color: #333;
+            padding: 25px; border-radius: 12px;
+            width: 85%; max-width: 320px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        #modal-box h2 { margin-top: 0; color: #2c3e50; }
+        .modal-btn-row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        .modal-btn { border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; flex: 1; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-secondary { background: #e74c3c; color: white; }
+
+        /* --- WORDLE SPECIFIC --- */
+        #wordle-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #121213; }
+        #wordle-board { display: grid; grid-template-rows: repeat(6, 1fr); grid-template-columns: repeat(5, 1fr); gap: 5px; padding: 10px; }
+        .w-tile { width: 60px; height: 60px; border: 2px solid #3a3a3c; display: flex; justify-content: center; align-items: center; font-size: 2rem; font-weight: bold; text-transform: uppercase; color: white; }
+        .w-correct { background-color: var(--w-correct); border-color: var(--w-correct); }
+        .w-present { background-color: var(--w-present); border-color: var(--w-present); }
+        .w-absent { background-color: var(--w-absent); border-color: var(--w-absent); }
+        #w-message { height: 30px; margin-bottom: 10px; font-weight: bold; font-size: 1.2rem; color: white;}
+
+        /* --- AIR ATTACK SPECIFIC --- */
+        #air-container { flex: 1; position: relative; display: flex; justify-content: center; background: #0f0f1a; overflow: hidden; }
+        #airCanvas { background-color: #0f0f1a; display: block; width: 100%; height: 100%; }
+        #air-ui { position: absolute; top: 10px; left: 15px; font-weight: bold; font-size: 18px; text-shadow: 2px 2px 0 #000; z-index: 10; pointer-events: none; }
+        #air-controls { position: absolute; bottom: 20px; right: 20px; z-index: 20; display: none; }
+        #air-fireBtn { width: 80px; height: 80px; border-radius: 50%; background: rgba(255, 0, 85, 0.6); border: 2px solid white; color: white; font-weight: bold; font-size: 16px; user-select: none; box-shadow: 0 0 10px rgba(255,0,85,0.5); }
+        #air-fireBtn:active { background: rgba(255, 0, 85, 1); transform: scale(0.95); }
+
+        /* --- 2048 SPECIFIC --- */
+        #g2048-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #faf8ef; color: #776e65; }
+        #g2048-header { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; padding: 15px; }
+        .score-box { background: #bbada0; color: white; padding: 5px 15px; border-radius: 5px; text-align: center; font-weight: bold; }
+        
+        #g2048-board { 
+            background: var(--g-bg); 
+            border-radius: 10px; 
+            padding: 10px; 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            grid-template-rows: repeat(4, 1fr); 
+            gap: 10px; 
+            width: 95vw; 
+            max-width: 400px; 
+            aspect-ratio: 1; 
+        }
+        
+        .g-cell { 
+            width: 100%;
+            height: 100%;
+            background: var(--cell-bg); 
+            border-radius: 5px; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            font-size: 2rem; 
+            font-weight: bold; 
+            color: #776e65; 
+            overflow: hidden; 
+        }
+        .val-2 { background: #eee4da; } .val-4 { background: #ede0c8; } .val-8 { background: #f2b179; color: #f9f6f2; }
+        .val-16 { background: #f59563; color: #f9f6f2; } .val-32 { background: #f67c5f; color: #f9f6f2; } .val-64 { background: #f65e3b; color: #f9f6f2; }
+        .val-128 { background: #edcf72; color: #f9f6f2; font-size: 1.5rem; } .val-256 { background: #edcc61; color: #f9f6f2; font-size: 1.5rem; }
+        .val-512 { background: #edc850; color: #f9f6f2; font-size: 1.5rem; } .val-1024 { background: #edc53f; color: #f9f6f2; font-size: 1.2rem; }
+        .val-2048 { background: #edc22e; color: #f9f6f2; font-size: 1.2rem; box-shadow: 0 0 10px yellow; }
+
+    </style>
+</head>
+<body>
+
+    <div id="modal-overlay">
+        <div id="modal-box">
+            <h2 id="modal-title">Title</h2>
+            <div id="modal-content">Content</div>
+            <div class="modal-btn-row" id="modal-actions"></div>
+        </div>
+    </div>
+
+    <div id="menu-view" class="view active">
+        <h1>Game Center 4</h1>
+        <button class="menu-btn" onclick="App.startWordle()">Wordle</button>
+        <button class="menu-btn" onclick="App.startAirAttack()">Air Attack</button>
+        <button class="menu-btn" onclick="App.start2048()">2048</button>
+    </div>
+
+    <div id="wordle-view" class="view">
+        <header>
+            <div style="color:var(--w-correct)">WORDLE</div>
+            <div></div>
+            <button class="header-btn" onclick="App.returnToMenu()">Menu</button>
+        </header>
+        <div id="wordle-container">
+            <div id="w-message"></div>
+            <div id="wordle-board"></div>
+            <p style="color:#777; font-size:0.8rem; margin-top:20px;">Use physical keyboard to type</p>
+        </div>
+    </div>
+
+    <div id="air-attack-view" class="view">
+        <header style="background: #1a1a2e; border-bottom: 2px solid #333;">
+            <div style="color:#00d2ff">AIR ATTACK</div>
+            <div></div>
+            <button class="header-btn" onclick="App.returnToMenu()">Menu</button>
+        </header>
+        <div id="air-container">
+            <canvas id="airCanvas"></canvas>
+            <div id="air-ui">
+                <div>SCORE: <span id="air-score">0</span> / 1000</div>
+                <div>HP: <span id="air-hp">3</span></div>
+            </div>
+            <div id="air-controls">
+                <button id="air-fireBtn">FIRE</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="g2048-view" class="view">
+        <header style="background: #faf8ef; color:#776e65; border-bottom: 1px solid #ddd;">
+            <div>2048</div>
+            <div></div>
+            <button class="header-btn" style="background:#8f7a66; color:white;" onclick="App.returnToMenu()">Menu</button>
+        </header>
+        <div id="g2048-container">
+            <div id="g2048-header">
+                <div>
+                    <h2 style="margin:0; font-size:2rem;">2048</h2>
+                    <span style="font-size:0.8rem;">Join the numbers!</span>
+                </div>
+                <div class="score-box">
+                    SCORE<br><span id="g2048-score">0</span>
+                </div>
+            </div>
+            <div id="g2048-board"></div>
+            <p style="font-size:0.8rem; margin-top:20px;">Use arrow keys or swipe</p>
+        </div>
+    </div>
+
+<script>
+    /** APP CONTROLLER **/
+    const App = {
+        currentView: 'menu',
+        setView: (id) => {
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            App.currentView = id.split('-view')[0];
+        },
+        startWordle: () => { App.setView('wordle-view'); Wordle.init(); },
+        startAirAttack: () => { App.setView('air-attack-view'); AirAttack.init(); },
+        start2048: () => { App.setView('g2048-view'); Game2048.init(); },
+        returnToMenu: () => {
+            AirAttack.stop();
+            Modal.hide(); 
+            App.setView('menu-view');
+        }
+    };
+
+    /** MODAL SYSTEM **/
+    const Modal = {
+        el: document.getElementById('modal-overlay'),
+        title: document.getElementById('modal-title'),
+        content: document.getElementById('modal-content'),
+        actions: document.getElementById('modal-actions'),
+        show: (title, html, buttons = []) => {
+            Modal.title.innerText = title;
+            Modal.content.innerHTML = html;
+            Modal.actions.innerHTML = '';
+            buttons.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = `modal-btn ${btn.cls || 'btn-primary'}`;
+                b.innerText = btn.text;
+                b.onclick = () => { if(btn.onClick) btn.onClick(); if(btn.close !== false) Modal.hide(); };
+                Modal.actions.appendChild(b);
+            });
+            Modal.el.style.display = 'flex';
+        },
+        hide: () => { Modal.el.style.display = 'none'; }
+    };
+
+    /** GAME 1: WORDLE **/
+    const Wordle = (() => {
+        const wordDatabase = [
+            "ABOUT", "ALERT", "ARGUE", "BEACH", "ABOVE", "ALIEN", "ARISE", "BEGAN", "ABUSE", "ALIKE", "ARRAY", "BEGIN", "ACTOR", "ALIVE", "ASIDE", "BEGUN", "ACUTE", "ALLOW", "ASSET", "BEING", "ADMIT", "ALONE", "AUDIO", "BELOW", "ADOPT", "ALONG", "AUDIT", "BENCH", "ADULT", "ALTER", "AVOID", "BILLY", "AFTER", "AMONG", "AWARD", "BIRTH", "AGAIN", "ANGER", "AWARE", "BLACK", "AGENT", "ANGLE", "BADLY", "BLAME", "AGREE", "ANGRY", "BAKER", "BLIND", "AHEAD", "APART", "BASES", "BLOCK", "ALARM", "APPLE", "BASIC", "BLOOD", "ALBUM", "APPLY", "BASIS", "BOARD", "BRAIN", "BUYER", "CHEST", "COVER", "BRAND", "CABLE", "CHIEF", "CRAFT", "BREAD", "CALIF", "CHILD", "CRASH", "BREAK", "CARRY", "CHINA", "CREAM", "BREED", "CATCH", "CHOSE", "CRIME", "BRIEF", "CAUSE", "CIVIL", "CROSS", "BRING", "CHAIN", "CLAIM", "CROWD", "BROAD", "CHAIR", "CLASS", "CROWN", "BROKE", "CHART", "CLEAN", "CURVE", "BROWN", "CHASE", "CLEAR", "CYCLE", "BUILD", "CHEAP", "CLOCK", "DAILY", "BUILT", "CHECK", "CLOSE", "DANCE", "COACH", "DATED", "COAST", "DEALT", "DEPTH", "ENTRY", "FAULT", "DOING", "EQUAL", "FIELD", "DOUBT", "ERROR", "FIFTH", "DOZEN", "EVENT", "FIFTY", "DRAFT", "EXACT", "FIGHT", "DRAMA", "EXIST", "FINAL", "DRAWN", "EXTRA", "FIRST", "DREAM", "FACED", "FIXED", "DRESS", "FACTS", "FLASH", "DRILL", "FAIRY", "FLEET", "DRINK", "FAITH", "FLOOR", "DRIVE", "FALSE", "FLUID", "EARLY", "FOCUS", "EARTH", "FORCE", "EIGHT", "FORTH", "EMPTY", "FORTY", "ENEMY", "FORUM", "ENJOY", "FOUND", "FRAME", "GIANT", "GUEST", "FRANK", "GIVEN", "GUIDE", "FRAUD", "GLASS", "HABIT", "FRESH", "GLOBE", "HAIR", "FRONT", "GOING", "HAPPY", "FRUIT", "GRACE", "HARRY", "FULLY", "GRADE", "HARSH", "FUNNY", "GRAND", "HEART", "GRANT", "HEAVY", "GRASS", "HENCE", "GREAT", "HORSE", "GREEN", "HOTEL", "GROSS", "HOUSE", "GROUP", "HUMAN", "GUARD", "IDEAL", "GUESS", "IMAGE", "INDEX", "LARGE", "LUNCH", "INNER", "LASER", "MAGIC", "INPUT", "LATER", "MAJOR", "ISSUE", "LAUGH", "MAKER", "JAPAN", "LAYER", "MARCH", "JIMMY", "LEARN", "MATCH", "JOINT", "LEASE", "MAYOR", "JONES", "LEAST", "MEANT", "JUDGE", "LEAVE", "MEDIA", "KNOWN", "LEGAL", "METAL", "LABEL", "LEVEL", "MIGHT", "LABOR", "LIGHT", "MINOR", "LIMIT", "MINUS", "LOCAL", "MIXED", "LOGIC", "MODEL", "LOOSE", "MONEY", "LUCKY", "MONTH"
+        ];
+        
+        let TARGET_WORD = "";
+        const MAX_GUESSES = 6, WORD_LENGTH = 5;
+        let currentRow = 0, currentCol = 0, gameOver = false;
+        const board = document.getElementById("wordle-board");
+        const msgDisplay = document.getElementById("w-message");
+
+        function init() {
+            TARGET_WORD = wordDatabase[Math.floor(Math.random() * wordDatabase.length)];
+            currentRow = 0; currentCol = 0; gameOver = false;
+            board.innerHTML = '';
+            msgDisplay.innerText = '';
+            for (let r = 0; r < MAX_GUESSES; r++) {
+                for (let c = 0; c < WORD_LENGTH; c++) {
+                    const tile = document.createElement("div");
+                    tile.id = `wr${r}c${c}`; tile.className = "w-tile";
+                    board.appendChild(tile);
+                }
+            }
+        }
+
+        document.addEventListener("keydown", (e) => {
+            if (App.currentView !== 'wordle' || gameOver) return;
+            const key = e.key;
+            if (key === "Enter") submitGuess();
+            else if (key === "Backspace") deleteLetter();
+            else if (/^[a-zA-Z]$/.test(key)) addLetter(key.toUpperCase());
+        });
+
+        function addLetter(letter) {
+            if (currentCol < WORD_LENGTH) {
+                document.getElementById(`wr${currentRow}c${currentCol}`).innerText = letter;
+                currentCol++;
+            }
+        }
+
+        function deleteLetter() {
+            if (currentCol > 0) {
+                currentCol--;
+                document.getElementById(`wr${currentRow}c${currentCol}`).innerText = "";
+            }
+        }
+
+        function submitGuess() {
+            if (currentCol !== WORD_LENGTH) { showMessage("Not enough letters"); return; }
+            let guess = "";
+            for (let c = 0; c < WORD_LENGTH; c++) guess += document.getElementById(`wr${currentRow}c${c}`).innerText;
+
+            let counts = {};
+            for (let i = 0; i < WORD_LENGTH; i++) counts[TARGET_WORD[i]] = (counts[TARGET_WORD[i]] || 0) + 1;
+
+            let colors = new Array(WORD_LENGTH).fill("w-absent");
+            for (let i = 0; i < WORD_LENGTH; i++) {
+                if (guess[i] === TARGET_WORD[i]) { colors[i] = "w-correct"; counts[guess[i]]--; }
+            }
+            for (let i = 0; i < WORD_LENGTH; i++) {
+                if (colors[i] === "w-correct") continue;
+                if (counts[guess[i]] > 0) { colors[i] = "w-present"; counts[guess[i]]--; }
+            }
+            for (let i = 0; i < WORD_LENGTH; i++) {
+                document.getElementById(`wr${currentRow}c${i}`).classList.add(colors[i]);
+            }
+
+            if (guess === TARGET_WORD) {
+                gameOver = true;
+                setTimeout(() => Modal.show("You Win!", `<p>Guessed in ${currentRow+1}/6</p>`, [{text: "Play Again", onClick: init}]), 500);
+                return;
+            }
+
+            currentRow++; currentCol = 0;
+            if (currentRow === MAX_GUESSES) {
+                gameOver = true;
+                setTimeout(() => Modal.show("Game Over", `<p>The word was <b>${TARGET_WORD}</b></p>`, [{text: "Try Again", onClick: init}]), 500);
+            }
+        }
+
+        function showMessage(msg) {
+            msgDisplay.innerText = msg;
+            setTimeout(() => { if (!gameOver) msgDisplay.innerText = ""; }, 2000);
+        }
+
+        return { init };
+    })();
+
+    /** GAME 2: AIR ATTACK (EXPANDED) **/
+    const AirAttack = (() => {
+        const canvas = document.getElementById('airCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('air-score');
+        const hpDisplay = document.getElementById('air-hp');
+        const controlsDiv = document.getElementById('air-controls');
+        const fireBtn = document.getElementById('air-fireBtn');
+
+        let gameActive = false, score = 0, victoryCount = 1000, frames = 0, reqId;
+        let player, enemies = [], bullets = [], stars = [];
+        
+        let bossActive = false, bossDefeated = false, boss = null;
+        let popupMsg = "", popupTimer = 0;
+
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false, FireBtn: false };
+        let touchX = null, touchY = null;
+
+        if ('ontouchstart' in window || navigator.maxTouchPoints) controlsDiv.style.display = 'block';
+
+        function showPopup(msg) { popupMsg = msg; popupTimer = 150; }
+
+        class Player {
+            constructor() {
+                this.w = 40; this.h = 40;
+                this.x = canvas.width / 2 - this.w / 2;
+                this.y = canvas.height - 100;
+                this.speed = 5; this.hp = 3; this.cooldown = 0;
+                this.weaponLevel = 1;
+            }
+            update() {
+                if (keys.ArrowLeft && this.x > 0) this.x -= this.speed;
+                if (keys.ArrowRight && this.x + this.w < canvas.width) this.x += this.speed;
+                if (keys.ArrowUp && this.y > 0) this.y -= this.speed;
+                if (keys.ArrowDown && this.y + this.h < canvas.height) this.y += this.speed;
+
+                if (touchX !== null && touchY !== null) {
+                    this.x += (touchX - this.w/2 - this.x) * 0.15;
+                    this.y += (touchY - this.h - 50 - this.y) * 0.15;
+                    if(this.x < 0) this.x = 0;
+                    if(this.x > canvas.width - this.w) this.x = canvas.width - this.w;
+                }
+
+                if ((keys.Space || keys.FireBtn) && this.cooldown <= 0) {
+                    if(this.weaponLevel === 1) {
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 0));
+                    } else if (this.weaponLevel === 2) {
+                        bullets.push(new Bullet(this.x + this.w/4, this.y, -12, true, 0));
+                        bullets.push(new Bullet(this.x + this.w*0.75, this.y, -12, true, 0));
+                    } else if (this.weaponLevel === 3) {
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 0));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, -2));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 2));
+                    } else { // Level 4
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 0));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, -2));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 2));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, -4));
+                        bullets.push(new Bullet(this.x + this.w/2, this.y, -12, true, 4));
+                    }
+                    this.cooldown = 15; 
+                }
+                if (this.cooldown > 0) this.cooldown--;
+            }
+            draw() {
+                ctx.fillStyle = '#00d2ff'; ctx.beginPath();
+                ctx.moveTo(this.x + this.w/2, this.y); ctx.lineTo(this.x + this.w, this.y + this.h);
+                ctx.lineTo(this.x + this.w/2, this.y + this.h - 10); ctx.lineTo(this.x, this.y + this.h);
+                ctx.closePath(); ctx.fill();
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                this.w = 40; this.h = 40;
+                this.x = Math.random() * (canvas.width - this.w);
+                this.y = -50; this.speed = 3 + (score/200); // gets faster
+                this.shootTimer = Math.random() * 80 + 40; 
+            }
+            update() {
+                this.y += this.speed; this.shootTimer--;
+                if (this.shootTimer <= 0) {
+                    bullets.push(new Bullet(this.x + this.w/2, this.y + this.h, 7, false, 0));
+                    this.shootTimer = Math.random() * 100 + 100;
+                }
+            }
+            draw() {
+                ctx.fillStyle = '#ff4d4d'; ctx.beginPath();
+                ctx.moveTo(this.x, this.y); ctx.lineTo(this.x + this.w, this.y);
+                ctx.lineTo(this.x + this.w/2, this.y + this.h); ctx.closePath(); ctx.fill();
+            }
+        }
+
+        class Boss {
+            constructor() {
+                this.w = 140; this.h = 90;
+                this.x = canvas.width / 2 - this.w / 2;
+                this.y = -120;
+                this.hp = 100; // lots of health
+                this.maxHp = 100;
+                this.speed = 2;
+                this.dir = 1;
+                this.shootTimer = 60;
+            }
+            update() {
+                if (this.y < 50) this.y += 2; // intro slide down
+                else {
+                    this.x += this.speed * this.dir;
+                    if (this.x <= 0 || this.x + this.w >= canvas.width) this.dir *= -1;
+
+                    this.shootTimer--;
+                    if (this.shootTimer <= 0) {
+                        for(let i=-2; i<=2; i++) { // 5-way spread
+                            bullets.push(new Bullet(this.x + this.w/2, this.y + this.h, 6, false, i * 1.5));
+                        }
+                        this.shootTimer = 70;
+                    }
+                }
+            }
+            draw() {
+                ctx.fillStyle = '#ff0055';
+                ctx.fillRect(this.x, this.y, this.w, this.h);
+                // Draw Health Bar
+                ctx.fillStyle = 'red';
+                ctx.fillRect(this.x, this.y - 20, this.w, 10);
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(this.x, this.y - 20, this.w * (this.hp / this.maxHp), 10);
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, speed, isPlayer, vx) {
+                this.x = x; this.y = y; this.r = 5; this.speed = speed; this.vx = vx;
+                this.isPlayer = isPlayer; this.markedForDeletion = false;
+            }
+            update() { 
+                this.y += this.speed; this.x += this.vx; 
+                if (this.y < -20 || this.y > canvas.height + 20 || this.x < -20 || this.x > canvas.width + 20) this.markedForDeletion = true; 
+            }
+            draw() {
+                ctx.fillStyle = this.isPlayer ? '#ffff00' : '#ff00ff';
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        function resize() {
+            canvas.width = document.getElementById('air-container').clientWidth;
+            canvas.height = document.getElementById('air-container').clientHeight;
+        }
+
+        function init() {
+            resize();
+            player = new Player(); enemies = []; bullets = []; stars = [];
+            score = 0; frames = 0; gameActive = true;
+            bossActive = false; bossDefeated = false; boss = null;
+            popupTimer = 0;
+            for(let i=0; i<40; i++) stars.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, size: Math.random()*2+1, speed: Math.random()*2+0.5});
+            if(reqId) cancelAnimationFrame(reqId);
+            loop();
+        }
+
+        function stop() { gameActive = false; if(reqId) cancelAnimationFrame(reqId); }
+
+        window.addEventListener('keydown', e => {
+            if(App.currentView !== 'air-attack') return;
+            if(e.code === 'Space') keys.Space = true;
+            if(e.code === 'ArrowUp') keys.ArrowUp = true; if(e.code === 'ArrowDown') keys.ArrowDown = true;
+            if(e.code === 'ArrowLeft') keys.ArrowLeft = true; if(e.code === 'ArrowRight') keys.ArrowRight = true;
+        });
+        window.addEventListener('keyup', e => {
+            if(App.currentView !== 'air-attack') return;
+            if(e.code === 'Space') keys.Space = false;
+            if(e.code === 'ArrowUp') keys.ArrowUp = false; if(e.code === 'ArrowDown') keys.ArrowDown = false;
+            if(e.code === 'ArrowLeft') keys.ArrowLeft = false; if(e.code === 'ArrowRight') keys.ArrowRight = false;
+        });
+
+        canvas.addEventListener('touchstart', e => { if(App.currentView !== 'air-attack') return; e.preventDefault(); touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; }, {passive: false});
+        canvas.addEventListener('touchmove', e => { if(App.currentView !== 'air-attack') return; e.preventDefault(); touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; }, {passive: false});
+        canvas.addEventListener('touchend', e => { if(App.currentView !== 'air-attack') return; e.preventDefault(); touchX = null; touchY = null; }, {passive: false});
+        
+        fireBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.FireBtn = true; }, {passive: false});
+        fireBtn.addEventListener('touchend', e => { e.preventDefault(); keys.FireBtn = false; }, {passive: false});
+
+        function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) { return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1; }
+
+        function checkCollisions() {
+            const pBox = {
+                x: player.x + 10,
+                y: player.y + 15,
+                w: player.w - 20,
+                h: player.h - 15
+            };
+
+            bullets.forEach(b => {
+                const bBox = { 
+                    x: b.x - b.r, 
+                    y: b.y - b.r, 
+                    w: b.r * 2, 
+                    h: b.r * 2 
+                };
+
+                if (b.isPlayer) {
+                    enemies.forEach(e => {
+                        if (!b.markedForDeletion && rectIntersect(bBox.x, bBox.y, bBox.w, bBox.h, e.x, e.y, e.w, e.h)) {
+                            e.markedForDeletion = true; b.markedForDeletion = true; score++;
+                        }
+                    });
+                    
+                    if (bossActive && !b.markedForDeletion && rectIntersect(bBox.x, bBox.y, bBox.w, bBox.h, boss.x, boss.y, boss.w, boss.h)) {
+                        b.markedForDeletion = true; boss.hp--;
+                        if(boss.hp <= 0) {
+                            bossActive = false; bossDefeated = true;
+                            score += 100; showPopup("BOSS DEFEATED! +100 PTS");
+                        }
+                    }
+
+                } else {
+                    if (!b.markedForDeletion && rectIntersect(bBox.x, bBox.y, bBox.w, bBox.h, pBox.x, pBox.y, pBox.w, pBox.h)) {
+                        b.markedForDeletion = true; player.hp--;
+                        if(player.hp <= 0) { gameActive = false; Modal.show("GAME OVER", `<p>Score: ${score}</p>`, [{text:"Try Again", onClick:init}]); }
+                    }
+                }
+            });
+            
+            enemies.forEach(e => {
+                if (rectIntersect(pBox.x, pBox.y, pBox.w, pBox.h, e.x, e.y, e.w, e.h)) {
+                    e.markedForDeletion = true; player.hp--;
+                    if(player.hp <= 0) { gameActive = false; Modal.show("GAME OVER", `<p>Score: ${score}</p>`, [{text:"Try Again", onClick:init}]); }
+                }
+            });
+
+            if (bossActive && rectIntersect(pBox.x, pBox.y, pBox.w, pBox.h, boss.x, boss.y, boss.w, boss.h)) {
+                player.hp = 0; // instant death
+                gameActive = false; Modal.show("GAME OVER", `<p>Crushed by the Boss.</p>`, [{text:"Try Again", onClick:init}]);
+            }
+        }
+
+        function loop() {
+            if (!gameActive) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            frames++;
+            
+            // Check Upgrades & Events
+            if(score >= 50 && player.weaponLevel === 1) { player.weaponLevel = 2; showPopup("POWER UP: DOUBLE SHOT"); }
+            if(score >= 200 && player.weaponLevel === 2) { player.weaponLevel = 3; showPopup("POWER UP: SPREAD SHOT"); }
+            if(score >= 500 && !bossActive && !bossDefeated) { bossActive = true; boss = new Boss(); showPopup("WARNING: BOSS INCOMING"); }
+            if(score >= 700 && player.weaponLevel === 3) { player.weaponLevel = 4; showPopup("POWER UP: MAX SPREAD"); }
+            
+            if(score >= victoryCount) {
+                gameActive = false; Modal.show("YOU WON!", `<p>Earth is saved!<br>Score: ${score}</p>`, [{text:"Play Again", onClick:init}]);
+            }
+
+            // Spawn enemies
+            let spawnRate = Math.max(20, 60 - Math.floor(score / 20)); // Spawn faster over time
+            if (frames % spawnRate === 0 && !bossActive) enemies.push(new Enemy());
+
+            // Updates
+            player.update(); enemies.forEach(e => e.update()); bullets.forEach(b => b.update());
+            if(bossActive) boss.update();
+
+            enemies = enemies.filter(e => !e.markedForDeletion && e.y < canvas.height + 50);
+            bullets = bullets.filter(b => !b.markedForDeletion);
+
+            checkCollisions();
+
+            // Rendering
+            ctx.fillStyle = 'white';
+            stars.forEach(s => { ctx.fillRect(s.x, s.y, s.size, s.size); s.y += s.speed; if(s.y > canvas.height) s.y = 0; });
+            
+            player.draw(); enemies.forEach(e => e.draw()); bullets.forEach(b => b.draw());
+            if(bossActive) boss.draw();
+
+            // Draw popups
+            if (popupTimer > 0) {
+                ctx.fillStyle = `rgba(241, 196, 15, ${popupTimer / 50})`;
+                ctx.font = "bold 24px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(popupMsg, canvas.width/2, canvas.height/2);
+                popupTimer--;
+            }
+
+            scoreDisplay.innerText = score; hpDisplay.innerText = Math.max(0, player.hp);
+            reqId = requestAnimationFrame(loop);
+        }
+
+        return { init, stop };
+    })();
+
+    /** GAME 3: 2048 **/
+    const Game2048 = (() => {
+        let grid = [], score = 0;
+        const board = document.getElementById("g2048-board");
+        const scoreDisplay = document.getElementById("g2048-score");
+
+        function init() {
+            grid = [[0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0]];
+            score = 0;
+            addTile(); addTile(); render();
+        }
+
+        function addTile() {
+            let empty = [];
+            for(let r=0; r<4; r++) for(let c=0; c<4; c++) if(grid[r][c]===0) empty.push({r,c});
+            if(empty.length > 0) {
+                let spot = empty[Math.floor(Math.random() * empty.length)];
+                grid[spot.r][spot.c] = Math.random() < 0.9 ? 2 : 4;
+            }
+        }
+
+        function render() {
+            board.innerHTML = '';
+            for(let r=0; r<4; r++) {
+                for(let c=0; c<4; c++) {
+                    const cell = document.createElement('div');
+                    let val = grid[r][c];
+                    cell.className = `g-cell ${val > 0 ? 'val-'+val : ''}`;
+                    cell.innerText = val > 0 ? val : '';
+                    board.appendChild(cell);
+                }
+            }
+            scoreDisplay.innerText = score;
+        }
+
+        function slide(row) {
+            let arr = row.filter(val => val); // extract non-zero
+            for(let i=0; i<arr.length-1; i++) {
+                if(arr[i] === arr[i+1]) { arr[i] *= 2; score += arr[i]; arr.splice(i+1, 1); }
+            }
+            while(arr.length < 4) arr.push(0);
+            return arr;
+        }
+
+        function move(dir) {
+            let moved = false;
+            let tempGrid = JSON.parse(JSON.stringify(grid));
+
+            if(dir === 'Left' || dir === 'Right') {
+                for(let r=0; r<4; r++) {
+                    let row = grid[r];
+                    if(dir === 'Right') row.reverse();
+                    let newRow = slide(row);
+                    if(dir === 'Right') newRow.reverse();
+                    grid[r] = newRow;
+                }
+            } else if (dir === 'Up' || dir === 'Down') {
+                for(let c=0; c<4; c++) {
+                    let col = [grid[0][c], grid[1][c], grid[2][c], grid[3][c]];
+                    if(dir === 'Down') col.reverse();
+                    let newCol = slide(col);
+                    if(dir === 'Down') newCol.reverse();
+                    for(let r=0; r<4; r++) grid[r][c] = newCol[r];
+                }
+            }
+
+            // Check if board changed
+            for(let r=0; r<4; r++) for(let c=0; c<4; c++) if(grid[r][c] !== tempGrid[r][c]) moved = true;
+
+            if(moved) {
+                addTile(); render();
+                if(checkLoss()) Modal.show("Game Over", `<p>No more moves.</p><p>Score: ${score}</p>`, [{text:"Restart", onClick:init}]);
+                if(score >= 2048 && !localStorage.getItem('g2048_won')) {
+                    localStorage.setItem('g2048_won', 'true');
+                    Modal.show("You Win!", `<p>You reached 2048!</p>`, [{text:"Keep Playing", onClick:()=>{}}, {text:"Restart", onClick:init}]);
+                }
+            }
+        }
+
+        function checkLoss() {
+            for(let r=0; r<4; r++) for(let c=0; c<4; c++) {
+                if(grid[r][c] === 0) return false;
+                if(r<3 && grid[r][c] === grid[r+1][c]) return false;
+                if(c<3 && grid[r][c] === grid[r][c+1]) return false;
+            }
+            return true;
+        }
+
+        // Inputs
+        document.addEventListener('keydown', e => {
+            if(App.currentView !== 'g2048') return;
+            if(e.key === 'ArrowUp') move('Up');
+            if(e.key === 'ArrowDown') move('Down');
+            if(e.key === 'ArrowLeft') move('Left');
+            if(e.key === 'ArrowRight') move('Right');
+        });
+
+        let touchStartX = 0, touchStartY = 0;
+        document.getElementById('g2048-container').addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX; touchStartY = e.changedTouches[0].screenY;
+        }, {passive:true});
+        document.getElementById('g2048-container').addEventListener('touchend', e => {
+            if(App.currentView !== 'g2048') return;
+            let dX = e.changedTouches[0].screenX - touchStartX;
+            let dY = e.changedTouches[0].screenY - touchStartY;
+            if(Math.abs(dX) > Math.abs(dY)) {
+                if(dX > 30) move('Right'); else if(dX < -30) move('Left');
+            } else {
+                if(dY > 30) move('Down'); else if(dY < -30) move('Up');
+            }
+        }, {passive:true});
+
+        return { init };
+    })();
+
+    /** PWA SERVICE WORKER REGISTRATION **/
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful');
+                })
+                .catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+        });
+    }
+</script>
+</body>
+</html>
