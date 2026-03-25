@@ -120,6 +120,25 @@
         .w-absent { background-color: var(--w-absent); border-color: var(--w-absent); }
         #w-message { height: 30px; margin-bottom: 10px; font-weight: bold; font-size: 1.2rem; color: white;}
 
+        /* Wordle Keyboard */
+        #wordle-keyboard {
+            display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 500px; margin-top: 15px; padding: 0 5px;
+        }
+        .keyboard-row {
+            display: flex; justify-content: center; width: 100%; margin-bottom: 8px; gap: 4px;
+        }
+        .key {
+            font-family: inherit; font-weight: bold; border: 0; padding: 0;
+            height: 50px; border-radius: 4px; cursor: pointer; background-color: #818384; color: white;
+            flex: 1; display: flex; justify-content: center; align-items: center; text-transform: uppercase;
+            -webkit-tap-highlight-color: rgba(0,0,0,0); user-select: none;
+        }
+        .key.large { flex: 1.5; font-size: 12px; }
+        .key:active { transform: scale(0.95); }
+        .key.w-correct { background-color: var(--w-correct); }
+        .key.w-present { background-color: var(--w-present); }
+        .key.w-absent { background-color: var(--w-absent); }
+
         /* --- AIR ATTACK SPECIFIC --- */
         #air-container { flex: 1; position: relative; display: flex; justify-content: center; background: #0f0f1a; overflow: hidden; }
         #airCanvas { background-color: #0f0f1a; display: block; width: 100%; height: 100%; }
@@ -190,7 +209,44 @@
         <div id="wordle-container">
             <div id="w-message"></div>
             <div id="wordle-board"></div>
-            <p style="color:#777; font-size:0.8rem; margin-top:20px;">Use physical keyboard to type</p>
+            
+            <div id="wordle-keyboard">
+                <div class="keyboard-row">
+                    <button class="key" data-key="Q">Q</button>
+                    <button class="key" data-key="W">W</button>
+                    <button class="key" data-key="E">E</button>
+                    <button class="key" data-key="R">R</button>
+                    <button class="key" data-key="T">T</button>
+                    <button class="key" data-key="Y">Y</button>
+                    <button class="key" data-key="U">U</button>
+                    <button class="key" data-key="I">I</button>
+                    <button class="key" data-key="O">O</button>
+                    <button class="key" data-key="P">P</button>
+                </div>
+                <div class="keyboard-row">
+                    <div style="flex: 0.5;"></div> <button class="key" data-key="A">A</button>
+                    <button class="key" data-key="S">S</button>
+                    <button class="key" data-key="D">D</button>
+                    <button class="key" data-key="F">F</button>
+                    <button class="key" data-key="G">G</button>
+                    <button class="key" data-key="H">H</button>
+                    <button class="key" data-key="J">J</button>
+                    <button class="key" data-key="K">K</button>
+                    <button class="key" data-key="L">L</button>
+                    <div style="flex: 0.5;"></div> </div>
+                <div class="keyboard-row">
+                    <button class="key large" data-key="Enter">ENTER</button>
+                    <button class="key" data-key="Z">Z</button>
+                    <button class="key" data-key="X">X</button>
+                    <button class="key" data-key="C">C</button>
+                    <button class="key" data-key="V">V</button>
+                    <button class="key" data-key="B">B</button>
+                    <button class="key" data-key="N">N</button>
+                    <button class="key" data-key="M">M</button>
+                    <button class="key large" data-key="Backspace">DEL</button>
+                </div>
+            </div>
+            <p style="color:#777; font-size:0.8rem; margin-top:10px;">Use on-screen or physical keyboard</p>
         </div>
     </div>
 
@@ -288,6 +344,10 @@
             currentRow = 0; currentCol = 0; gameOver = false;
             board.innerHTML = '';
             msgDisplay.innerText = '';
+            
+            // Clear keyboard colors
+            document.querySelectorAll('.key').forEach(k => k.classList.remove('w-correct', 'w-present', 'w-absent'));
+
             for (let r = 0; r < MAX_GUESSES; r++) {
                 for (let c = 0; c < WORD_LENGTH; c++) {
                     const tile = document.createElement("div");
@@ -297,6 +357,18 @@
             }
         }
 
+        // On-screen keyboard listeners
+        document.querySelectorAll('.key').forEach(keyBtn => {
+            keyBtn.addEventListener('click', () => {
+                if (App.currentView !== 'wordle' || gameOver) return;
+                const k = keyBtn.getAttribute('data-key');
+                if (k === 'Enter') submitGuess();
+                else if (k === 'Backspace') deleteLetter();
+                else addLetter(k);
+            });
+        });
+
+        // Physical keyboard listeners
         document.addEventListener("keydown", (e) => {
             if (App.currentView !== 'wordle' || gameOver) return;
             const key = e.key;
@@ -328,15 +400,35 @@
             for (let i = 0; i < WORD_LENGTH; i++) counts[TARGET_WORD[i]] = (counts[TARGET_WORD[i]] || 0) + 1;
 
             let colors = new Array(WORD_LENGTH).fill("w-absent");
+            
+            // First pass: exact matches
             for (let i = 0; i < WORD_LENGTH; i++) {
                 if (guess[i] === TARGET_WORD[i]) { colors[i] = "w-correct"; counts[guess[i]]--; }
             }
+            
+            // Second pass: wrong spot matches
             for (let i = 0; i < WORD_LENGTH; i++) {
                 if (colors[i] === "w-correct") continue;
                 if (counts[guess[i]] > 0) { colors[i] = "w-present"; counts[guess[i]]--; }
             }
+
+            // Apply colors to board and keyboard
             for (let i = 0; i < WORD_LENGTH; i++) {
                 document.getElementById(`wr${currentRow}c${i}`).classList.add(colors[i]);
+                
+                // Update Keyboard Key Color
+                let keyBtn = document.querySelector(`.key[data-key="${guess[i]}"]`);
+                if (keyBtn) {
+                    if (colors[i] === 'w-correct') {
+                        keyBtn.classList.remove('w-present', 'w-absent');
+                        keyBtn.classList.add('w-correct');
+                    } else if (colors[i] === 'w-present' && !keyBtn.classList.contains('w-correct')) {
+                        keyBtn.classList.remove('w-absent');
+                        keyBtn.classList.add('w-present');
+                    } else if (colors[i] === 'w-absent' && !keyBtn.classList.contains('w-correct') && !keyBtn.classList.contains('w-present')) {
+                        keyBtn.classList.add('w-absent');
+                    }
+                }
             }
 
             if (guess === TARGET_WORD) {
@@ -360,7 +452,7 @@
         return { init };
     })();
 
-    /** GAME 2: AIR ATTACK (EXPANDED) **/
+    /** GAME 2: AIR ATTACK **/
     const AirAttack = (() => {
         const canvas = document.getElementById('airCanvas');
         const ctx = canvas.getContext('2d');
@@ -534,7 +626,7 @@
             if(e.code === 'ArrowLeft') keys.ArrowLeft = false; if(e.code === 'ArrowRight') keys.ArrowRight = false;
         });
 
-        // UPDATED TOUCH CONTROLS FOR MOBILE: Uses getBoundingClientRect for accuracy, and auto-fires when touching.
+        // TOUCH CONTROLS FOR MOBILE: Uses getBoundingClientRect for accuracy, and auto-fires when touching.
         canvas.addEventListener('touchstart', e => { 
             if(App.currentView !== 'air-attack') return; 
             e.preventDefault(); 

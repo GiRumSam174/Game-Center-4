@@ -1,4 +1,4 @@
-const CACHE_NAME = 'game-center-v4.1';
+const CACHE_NAME = 'game-center-v4.2';
 const urlsToCache = [
     './GameCenter4.html',
     './manifest.json',
